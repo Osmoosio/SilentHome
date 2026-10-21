@@ -28,7 +28,6 @@ Yksi tiedosto, ei riippuvuuksia ja ei build-vaihetta:
 Vinkkejä:
 
 - Mikrofoni vaatii turvallisen yhteyden: käytä `https://`-osoitetta tai `localhost`. Paikallisesti esim. `python3 -m http.server` ja avaa `http://localhost:8000`.
-- Pelaa mieluiten kuulokkeilla, ettei taustamusiikki kuulu mikrofoniin.
 - Jos peli on avattu sovelluksen sisällä (esim. viestisovelluksen selain), avaa linkki suoraan Safarissa tai Chromessa.
 
 ## Tiedostot

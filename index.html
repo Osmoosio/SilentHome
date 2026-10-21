@@ -52,7 +52,7 @@ button.p{background:var(--accent);color:#fff;font-weight:600;font-size:18px;padd
 <div id="ov"><div class="card">
 <h1>🏠 Hiljainen koti</h1>
 <p>Pysy hiljaa. Kun hiljaisuutta on kestänyt tarpeeksi kauan, pöydälle lentää välipala (oletuksena suklaakeksi, vaihdettavissa asetuksista ⚙ terveellisempään), ja seuraava tulee kaksinkertaisen ajan kohdalla jne. Jos meuhkaat liian kauan, pöytä kaatuu ja kohteet putoavat.</p>
-<p>Pelaa mieluiten kuulokkeilla, ettei taustamusiikki kuulu mikrofoniin. Säädä nopeus ja rajat asetuksista ⚙.</p>
+<p>Säädä nopeus ja rajat asetuksista ⚙.</p>
 <div id="msg"></div>
 <button class="p" id="go">Aloita</button> <button id="skip" style="display:none">Jatka ilman mikkiä</button>
 </div></div>
@@ -84,7 +84,6 @@ const fields=[
  ['th','Äänen raja (musta viiva mittarissa)',.1,.9,.01,v=>Math.round(v*100)+' %'],
  ['dur','Kuinka kauan ääntelyä sallitaan',.2,3,.1,v=>(+v).toFixed(1)+' s'],
  ['sens','Mikrofonin herkkyys',.5,3,.1,v=>(+v).toFixed(1)+'x'],
- ['mus','Musiikin voimakkuus',0,1,.05,v=>Math.round(v*100)+' %'],
  ['sfx','Tehosteiden voimakkuus',0,1,.05,v=>Math.round(v*100)+' %']];
 function save(){try{localStorage.setItem('hs_set',JSON.stringify(S))}catch(e){}}
 const foods={cookie:['Suklaakeksi','🍪'],apple:['Omena','🍎'],carrot:['Porkkana','🥕'],banana:['Banaani','🍌'],strawberry:['Mansikka','🍓'],broccoli:['Parsakaali','🥦'],grapes:['Viinirypäleet','🍇'],mix:['Terveellinen sekoitus','🥗'],emojis:['Kivat emojit','🎉'],cars:['Autot (leijailevat pöydälle)','🚗']};
@@ -117,16 +116,11 @@ $('reset').onclick=()=>{Object.assign(S,defs);save();buildRows();applyVol();plac
 /* ---------- Ääni ---------- */
 let ac,mG,sG,muted=false,step=0,nextT=0;
 const mid=m=>440*2**((m-69)/12);
-function applyVol(){if(!ac)return;mG.gain.value=muted?0:S.mus*.5;sG.gain.value=muted?0:S.sfx}
+function applyVol(){if(!ac)return;sG.gain.value=muted?0:S.sfx}
 function tone(f,t,d,type,vol,dest,f2){const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(dest);o.start(t);o.stop(t+d+.05)}
 const sfxSpawn=()=>{if(!ac)return;const t=ac.currentTime;[84,88,91,96].forEach((m,i)=>tone(mid(m),t+i*.07,.4,'sine',.25,sG))};
 const sfxLand=()=>{if(!ac)return;tone(220,ac.currentTime,.2,'sine',.6,sG,70)};
 const sfxTip=()=>{if(!ac)return;const t=ac.currentTime;tone(320,t,.7,'sawtooth',.25,sG,60);[.5,.65,.8,.95].forEach(d=>tone(140,t+d,.15,'square',.2,sG,60))};
-const prog=[48,45,41,43],pent=[0,2,4,7,9],pat=[0,2,4,2,3,1,4,2];
-function playStep(s,t){const bar=Math.floor(s/8)%4,i=s%8;
- if(i%4===0)tone(mid(prog[bar]),t,1.1,'sine',.5,mG);
- if(i%2===0||bar%2)tone(mid(72+pent[(pat[i]+bar)%5]),t,.5,'triangle',.28,mG)}
-function startMusic(){nextT=ac.currentTime+.1;setInterval(()=>{while(nextT<ac.currentTime+.4){playStep(step,nextT);nextT+=.28;step++}},100)}
 $('bMute').onclick=()=>{muted=!muted;$('bMute').textContent=muted?'🔇':'🔊';applyVol()};
 
 /* ---------- Mikrofoni ---------- */
@@ -277,7 +271,7 @@ $('go').onclick=async()=>{
   setupAudio();
   applyVol();
   try{await ac.resume()}catch(e){}
-  startMusic();audioReady=true;
+  audioReady=true;
  }
  const ok=micOK||await initMic();
  $('go').disabled=false;
