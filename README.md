@@ -1,6 +1,6 @@
 # 🏠 Hiljainen koti (Silent Home)
 
-Selaimessa pyörivä mikrofonilla ohjattava hiljaisuuspeli. Pysy hiljaa: kun hiljaisuutta on kestänyt tarpeeksi kauan, lautaselle lentää välipala (oletuksena suklaakeksi, vaihdettavissa asetuksista terveellisempään). Seuraava välipala tulee kaksinkertaisen ajan kohdalla jne. Jos meuhkaat liian kauan, lautanen kaatuu ja kohteet putoavat.
+Selaimessa pyörivä mikrofonilla ohjattava hiljaisuuspeli. Pysy hiljaa: kun hiljaisuutta on kestänyt tarpeeksi kauan, pöydälle lentää välipala (oletuksena suklaakeksi, vaihdettavissa asetuksista terveellisempään). Seuraava välipala tulee kaksinkertaisen ajan kohdalla jne. Jos meuhkaat liian kauan, pöytä kaatuu ja kohteet putoavat.
 
 ## Ominaisuudet
 

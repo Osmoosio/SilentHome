@@ -11,6 +11,9 @@
 html,body{height:100%;margin:0;background:#1b2a1f;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)}
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #hud{position:fixed;left:12px;top:calc(10px + env(safe-area-inset-top,0px));background:var(--panel);padding:8px 12px;border-radius:12px;font-size:14px;line-height:1.5;box-shadow:0 2px 8px #0003}
+#goal{position:fixed;left:50%;transform:translateX(-50%);top:calc(6px + env(safe-area-inset-top,0px));background:var(--panel);padding:4px 18px;border-radius:16px;text-align:center;box-shadow:0 2px 8px #0003;pointer-events:none;line-height:1}
+#goal b{display:block;font-size:56px;color:var(--accent)}
+#goal small{font-size:12px}
 #btns{position:fixed;right:44px;top:calc(10px + env(safe-area-inset-top,0px));display:flex;gap:8px}
 button{font:inherit;border:0;border-radius:12px;background:var(--panel);color:var(--ink);padding:8px 12px;cursor:pointer;box-shadow:0 2px 8px #0003}
 button.p{background:var(--accent);color:#fff;font-weight:600;font-size:18px;padding:12px 28px}
@@ -33,17 +36,20 @@ button.p{background:var(--accent);color:#fff;font-weight:600;font-size:18px;padd
 <body>
 <canvas id="c"></canvas>
 <div id="hud"></div>
+<div id="goal"><small>Vielä tulossa</small><b id="goalN">0</b></div>
 <div id="btns"><button id="bTest" title="Pidä pohjassa: simuloi ääntä (tai Space)">🎤 Äänitesti</button><button id="bMute">🔊</button><button id="bSet">⚙</button></div>
 <div id="mt">🎤</div>
 <div id="meter"><div id="fill"></div><div id="thl"></div></div>
 
 <div id="ov"><div class="card">
 <h1>🏠 Hiljainen koti</h1>
-<p>Pysy hiljaa. Kun hiljaisuutta on kestänyt tarpeeksi kauan, lautaselle lentää välipala (oletuksena suklaakeksi, vaihdettavissa asetuksista ⚙ terveellisempään), ja seuraava tulee kaksinkertaisen ajan kohdalla jne. Jos meuhkaat liian kauan, lautanen kaatuu ja kohteet putoavat.</p>
+<p>Pysy hiljaa. Kun hiljaisuutta on kestänyt tarpeeksi kauan, pöydälle lentää välipala (oletuksena suklaakeksi, vaihdettavissa asetuksista ⚙ terveellisempään), ja seuraava tulee kaksinkertaisen ajan kohdalla jne. Jos meuhkaat liian kauan, pöytä kaatuu ja kohteet putoavat.</p>
 <p>Pelaa mieluiten kuulokkeilla, ettei taustamusiikki kuulu mikrofoniin. Säädä nopeus ja rajat asetuksista ⚙.</p>
 <div id="msg"></div>
 <button class="p" id="go">Aloita</button> <button id="skip" style="display:none">Jatka ilman mikkiä</button>
 </div></div>
+
+<div id="end" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0008;padding:16px;box-sizing:border-box"><div class="card"><h1>🎉 Voitit pelin!</h1><p id="endTxt"></p><button class="p" id="again">Pelaa uudelleen</button></div></div>
 
 <div id="panel"><div class="card">
 <h2>Asetukset</h2>
@@ -59,11 +65,12 @@ function resize(){const d=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHe
 addEventListener('resize',resize);resize();
 
 /* ---------- Asetukset ---------- */
-const defs={food:'cookie',silence:60,th:.45,sens:1,dur:1,speed:1,mus:.3,sfx:.7};
+const defs={food:'cookie',goal:10,silence:60,th:.45,sens:1,dur:1,speed:1,mus:.3,sfx:.7};
 const S={...defs};
 try{Object.assign(S,JSON.parse(localStorage.getItem('hs_set')||'{}'))}catch(e){}
 let best=0;try{best=+localStorage.getItem('hs_best')||0}catch(e){}
 const fields=[
+ ['goal','Tavoite: kohteita pöydällä (peli päättyy)',3,50,1,v=>v+' kpl'],
  ['speed','Pelin nopeus (kello kulkee x-kertaa)',1,30,1,v=>v+'x'],
  ['silence','Hiljaisuus yhtä kohdetta kohti',5,180,5,v=>v+' s'],
  ['th','Äänen raja (musta viiva mittarissa)',.1,.9,.01,v=>Math.round(v*100)+' %'],
@@ -72,13 +79,14 @@ const fields=[
  ['mus','Musiikin voimakkuus',0,1,.05,v=>Math.round(v*100)+' %'],
  ['sfx','Tehosteiden voimakkuus',0,1,.05,v=>Math.round(v*100)+' %']];
 function save(){try{localStorage.setItem('hs_set',JSON.stringify(S))}catch(e){}}
-const foods={cookie:['Suklaakeksi','🍪'],apple:['Omena','🍎'],carrot:['Porkkana','🥕'],banana:['Banaani','🍌'],strawberry:['Mansikka','🍓'],broccoli:['Parsakaali','🥦'],grapes:['Viinirypäleet','🍇'],mix:['Terveellinen sekoitus','🥗'],cars:['Autot (leijailevat pöydälle)','🚗']};
+const foods={cookie:['Suklaakeksi','🍪'],apple:['Omena','🍎'],carrot:['Porkkana','🥕'],banana:['Banaani','🍌'],strawberry:['Mansikka','🍓'],broccoli:['Parsakaali','🥦'],grapes:['Viinirypäleet','🍇'],mix:['Terveellinen sekoitus','🥗'],emojis:['Kivat emojit','🎉'],cars:['Autot (leijailevat pöydälle)','🚗']};
 const carList=['🚗','🚕','🚙','🏎️','🚓','🚑','🚒','🚌','🚐','🚚','🚜','🛻'];
+const funList=['🎉','🦄','🌈','⭐','🎈','🐶','🐱','🦋','🍦','🎁','🚀','🌸','🐼','🎨','🧸','🐙'];
 const mixList=['🍎','🥕','🍌','🍓','🥦','🍇'];
 function buildRows(){
  $('rows').innerHTML='';
  {const r=document.createElement('div');r.className='row';
-  const a=document.createElement('span');a.textContent='Lautaselle kertyvät kohteet';
+  const a=document.createElement('span');a.textContent='Pöydälle kertyvät kohteet';
   const sel=document.createElement('select');
   Object.keys(foods).forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=foods[k][1]+' '+foods[k][0];sel.append(o)});
   if(!foods[S.food])S.food='cookie';
@@ -144,7 +152,7 @@ addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat){sim=true;e.preven
 addEventListener('keyup',e=>{if(e.code==='Space')sim=false});
 
 /* ---------- Peli ---------- */
-let started=false,silentT=0,noiseT=0,lvl=0,cookies=[],flying=[],falling=[],tip=null,nid=1,added=0;
+let started=false,silentT=0,noiseT=0,lvl=0,cookies=[],flying=[],falling=[],tip=null,nid=1,added=0,over=false;
 const bowl=()=>{const bw=clamp(W*.5,170,280);return{bw,bx:W/2-bw/2*0,by:H*.66,bh:bw*.38}};
 function slotPos(i,b){const row=Math.floor(i/5),col=i%5;return{x:(col-2)*(b.bw/6.2)+(row%2?b.bw/12:0),y:-8-row*19}}
 function spawn(){
@@ -162,6 +170,7 @@ function startTip(){
 function fmt(s){s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
 
 function update(dt){
+ if(over)return;
  const raw=rawLevel();lvl+=(raw-lvl)*(raw>lvl?.5:.08);
  $('fill').style.height=(lvl*100)+'%';$('fill').className=lvl>S.th?'loud':'';
  if(tip){
@@ -171,12 +180,14 @@ function update(dt){
   if(noiseT>=S.dur&&(cookies.length+flying.length)>0){startTip()}
   else if(noiseT>=S.dur){noiseT=0;silentT=0;added=0}
   if(added*S.silence<=0&&false){}
-  while(silentT>=(added+1)*S.silence){added++;spawn()}
+  while(silentT>=(added+1)*S.silence&&cookies.length+flying.length<S.goal){added++;spawn()}
  }
  flying.forEach(f=>f.t+=dt);
  for(let i=flying.length-1;i>=0;i--)if(flying[i].t>=flying[i].dur){cookies.push({id:flying[i].id});flying.splice(i,1);sfxLand();if(cookies.length>best){best=cookies.length;try{localStorage.setItem('hs_best',best)}catch(e){}}}
  falling.forEach(c=>{c.vy+=900*dt;c.x+=c.vx*dt;c.y+=c.vy*dt});
  falling=falling.filter(c=>c.y<H+40);
+ $('goalN').textContent=Math.max(0,S.goal-cookies.length-flying.length);
+ if(cookies.length>=S.goal){over=true;$('endTxt').textContent='Pöydälle kertyi '+S.goal+' kohdetta. Hienoa hiljaisuutta!';$('end').style.display='flex';return}
  const next=(added+1)*S.silence-silentT;
  $('hud').innerHTML=`Hiljaisuutta <b>${fmt(silentT)}</b><br>Seuraava kohde <b>${tip?'–':fmt(next/S.speed)}</b>${S.speed>1?' <small>(oikeaa aikaa)</small>':''}<br>${foods[S.food]?foods[S.food][1]:'🍪'} ${cookies.length+flying.length} · ennätys ${best}<br>🎤 ${micOK?'päällä':'ei käytössä'} ${Math.round(lvl*100)} % <small>(${ac?ac.state:'-'})</small>`;
 }
@@ -186,7 +197,7 @@ function cookie(x,y,r,id,dir){
   ctx.save();ctx.translate(x,y);if((dir||(id%2?1:-1))>0)ctx.scale(-1,1);
   ctx.font=Math.round(r*2.3)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(carList[id%carList.length],0,0);ctx.restore();return}
  if(S.food!=='cookie'&&foods[S.food]){
-  const e=S.food==='mix'?mixList[id%mixList.length]:foods[S.food][1];
+  const e=S.food==='mix'?mixList[id%mixList.length]:S.food==='emojis'?funList[id%funList.length]:foods[S.food][1];
   ctx.save();ctx.font=Math.round(r*2.1)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(e,x,y);ctx.restore();return}
  ctx.fillStyle='#b9824a';ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
  ctx.strokeStyle='#8a5a2c';ctx.lineWidth=2;ctx.stroke();
@@ -195,7 +206,7 @@ function cookie(x,y,r,id,dir){
 }
 const ease=t=>t*t*(3-2*t);
 function drawRoom(time){
- const b=bowl(),floorY=H*.8,tableY=b.by+25;
+ const b=bowl(),floorY=H*.8;
  let g=ctx.createLinearGradient(0,0,0,floorY);g.addColorStop(0,'#f1dcc0');g.addColorStop(1,'#e6c9a0');ctx.fillStyle=g;ctx.fillRect(0,0,W,floorY);
  ctx.fillStyle='#d9b88c';ctx.fillRect(0,floorY-H*.07,W,H*.07);ctx.fillStyle='#b98f60';ctx.fillRect(0,floorY-H*.07,W,4);
  g=ctx.createLinearGradient(0,floorY,0,H);g.addColorStop(0,'#a36a3c');g.addColorStop(1,'#7a4a26');ctx.fillStyle=g;ctx.fillRect(0,floorY,W,H-floorY);
@@ -205,14 +216,27 @@ function drawRoom(time){
  ctx.strokeStyle='#fff';ctx.lineWidth=6;ctx.strokeRect(wx,wy,ww,wh);ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(wx+ww/2,wy);ctx.lineTo(wx+ww/2,wy+wh);ctx.moveTo(wx,wy+wh/2);ctx.lineTo(wx+ww,wy+wh/2);ctx.stroke();
  ctx.fillStyle='#c4574a';ctx.fillRect(wx-14,wy-8,16,wh+20);ctx.fillRect(wx+ww-2,wy-8,16,wh+20);
  const fw=clamp(W*.2,64,110),fx=W*.6,fy=H*.15;
- ctx.save();ctx.translate(fx+fw/2,fy);ctx.rotate(Math.sin(time/45)*lvl*.12);
+ const warn=tip?Math.max(0,1-tip.t/2.8):((cookies.length+flying.length)>0?clamp(noiseT/S.dur,0,1):0),wp=warn*warn;
+ const nailY=fy-fw*.25,shake=Math.sin(time/23)*wp*.03;
+ ctx.fillStyle='#555';ctx.beginPath();ctx.arc(fx+fw/2,nailY,3,0,7);ctx.fill();
+ ctx.save();ctx.translate(fx+fw/2,nailY);
+ ctx.rotate(Math.sin(time/45)*lvl*.06+Math.sin(time/(150-warn*50))*wp*.75+shake);
+ ctx.strokeStyle='#333';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-fw*.3,fy-nailY);ctx.lineTo(0,0);ctx.lineTo(fw*.3,fy-nailY);ctx.stroke();
+ ctx.translate(0,fy-nailY);
+ if(warn>.05){ctx.shadowColor='rgba(224,80,58,'+(warn*.9)+')';ctx.shadowBlur=18*warn}
  ctx.fillStyle='#6b4423';ctx.fillRect(-fw/2,0,fw,fw*1.2);ctx.fillStyle='#f6efe0';ctx.fillRect(-fw/2+6,6,fw-12,fw*1.2-12);
  ctx.fillStyle='#7fb069';ctx.beginPath();ctx.arc(0,fw*.8,fw*.25,Math.PI,0);ctx.fill();ctx.fillStyle='#e9c46a';ctx.beginPath();ctx.arc(-fw*.15,fw*.3,fw*.1,0,7);ctx.fill();
  ctx.restore();
  const tw=Math.min(W*.92,b.bw*2.3),tx=W/2-tw/2;
  ctx.fillStyle='#0002';ctx.beginPath();ctx.ellipse(W/2,H*.94,tw*.5,10,0,0,7);ctx.fill();
+}
+function drawTable(){
+ const b=bowl(),tableY=b.by+8,tw=Math.min(W*.92,b.bw*2.3),tx=W/2-tw/2;
+ ctx.save();
+ if(tip){const t=tip.t,a=t<.6?ease(t/.6):t<2.2?1:1-ease((t-2.2)/.6);const px=tx+tw*.92,py=H*.93;ctx.translate(px,py);ctx.rotate(a*1.45);ctx.translate(-px,-py)}
  ctx.fillStyle='#8a5a30';ctx.fillRect(tx+tw*.08,tableY,12,H*.93-tableY);ctx.fillRect(tx+tw*.92-12,tableY,12,H*.93-tableY);
  ctx.fillStyle='#a8713d';ctx.fillRect(tx,tableY,tw,16);ctx.fillStyle='#c18a52';ctx.fillRect(tx,tableY,tw,5);
+ ctx.restore();
 }
 function draw(time){
  const hz=H*.6;
@@ -226,16 +250,8 @@ function draw(time){
  
 
  const b=bowl(),cx=b.bx;
+ drawTable();
  ctx.save();ctx.translate(cx,b.by);
- if(tip){const t=tip.t;const a=t<.6?ease(t/.6):t<2.2?1:1-ease((t-2.2)/.6);ctx.translate(b.bw/2,0);ctx.rotate(a*1.65);ctx.translate(-b.bw/2,0)}
- ctx.translate(0,0);
- /* lautanen piirretään keskitettynä pisteeseen cx */
- const rx=b.bw/2;
- ctx.fillStyle='#c9d3dc';ctx.beginPath();ctx.ellipse(0,9,rx,17,0,0,7);ctx.fill();
- ctx.fillStyle='#f4f7fa';ctx.beginPath();ctx.ellipse(0,5,rx,17,0,0,7);ctx.fill();
- ctx.strokeStyle='#aab6c2';ctx.lineWidth=2;ctx.stroke();
- ctx.fillStyle='#e3e9ef';ctx.beginPath();ctx.ellipse(0,6,rx*.68,11,0,0,7);ctx.fill();
- ctx.strokeStyle='#cbd5de';ctx.lineWidth=1.5;ctx.stroke();
  cookies.forEach((c,i)=>{const p=slotPos(i,b);cookie(p.x,p.y,16,c.id)});
  ctx.restore();
 
@@ -270,6 +286,7 @@ $('go').onclick=async()=>{
  }
  $('mt').textContent='🎤';started=true;$('ov').style.display='none';
 };
+$('again').onclick=()=>{cookies=[];flying=[];falling=[];tip=null;silentT=0;noiseT=0;added=0;over=false;$('end').style.display='none'};
 $('skip').onclick=()=>{started=true;$('ov').style.display='none'};
 </script>
 </body>
