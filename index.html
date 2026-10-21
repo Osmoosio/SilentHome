@@ -21,8 +21,6 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #goal small{font-size:10px}
 #btns{gap:4px;right:calc(40px + env(safe-area-inset-right,0px))}
 #btns button{padding:6px 8px;font-size:13px}
-#bTest{font-size:0!important;padding:6px 8px!important}
-#bTest::before{content:"🎤";font-size:16px}
 #hud{font-size:12px;padding:6px 8px}
 }
 button{font:inherit;border:0;border-radius:12px;background:var(--panel);color:var(--ink);padding:8px 12px;cursor:pointer;box-shadow:0 2px 8px #0003}
@@ -47,7 +45,7 @@ button.p{background:var(--accent);color:#fff;font-weight:600;font-size:18px;padd
 <canvas id="c"></canvas>
 <div id="hud"></div>
 <div id="goal"><small>Vielä tulossa</small><b id="goalN">0</b></div>
-<div id="btns"><button id="bTest" title="Pidä pohjassa: simuloi ääntä (tai Space)">🎤 Äänitesti</button><button id="bMute">🔊</button><button id="bSet">⚙</button></div>
+<div id="btns"><button id="bMute">🔊</button><button id="bSet">⚙</button></div>
 <div id="mt">🎤</div>
 <div id="meter"><div id="fill"></div><div id="thl"></div></div>
 
@@ -132,7 +130,7 @@ function startMusic(){nextT=ac.currentTime+.1;setInterval(()=>{while(nextT<ac.cu
 $('bMute').onclick=()=>{muted=!muted;$('bMute').textContent=muted?'🔇':'🔊';applyVol()};
 
 /* ---------- Mikrofoni ---------- */
-let an,buf,micOK=false,sim=false,keep={},micErr='',spLvl=0;
+let an,buf,micOK=false,keep={},micErr='',spLvl=0;
 async function initMic(){
  micErr='';
  try{
@@ -150,16 +148,11 @@ async function initMic(){
  return micOK;
 }
 function rawLevel(){
- if(sim)return .95;if(!micOK)return 0;
+ if(!micOK)return 0;
  an.getFloatTimeDomainData(buf);let s=0,pk=0;for(let i=0;i<buf.length;i++){const v=Math.abs(buf[i]);s+=v*v;if(v>pk)pk=v}
  const a=Math.max(Math.sqrt(s/buf.length),pk*.5,spLvl)||1e-5;
  return clamp(((20*Math.log10(a)+70)/55)*S.sens,0,1);
 }
-const tb=$('bTest');
-['pointerdown'].forEach(e=>tb.addEventListener(e,ev=>{sim=true;ev.preventDefault()}));
-['pointerup','pointerleave','pointercancel'].forEach(e=>tb.addEventListener(e,()=>sim=false));
-addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat){sim=true;e.preventDefault()}});
-addEventListener('keyup',e=>{if(e.code==='Space')sim=false});
 
 /* ---------- Peli ---------- */
 let started=false,silentT=0,noiseT=0,lvl=0,cookies=[],flying=[],falling=[],tip=null,nid=1,added=0,over=false;

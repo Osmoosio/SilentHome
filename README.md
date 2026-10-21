@@ -7,7 +7,6 @@ Selaimessa pyörivä mikrofonilla ohjattava hiljaisuuspeli. Pysy hiljaa: kun hil
 - Mikrofonin äänenvoimakkuuden mittari ja säädettävä raja (kynnys)
 - Säädettävä nopeus ja rajat asetuksissa (⚙)
 - Taustamusiikki ja äänet, mykistys (🔊)
-- 🎤 Äänitesti: pidä painettuna (tai Space) simuloidaksesi ääntä ilman mikrofonia
 - Vaalea/tumma teema (seuraa järjestelmän asetusta)
 - "Jatka ilman mikkiä" -tila, jos mikrofonia ei saada käyttöön
 - Mobiiliystävällinen (safe-area-tuki)
