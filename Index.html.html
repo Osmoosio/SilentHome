@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hiljainen koti</title>
+<style>
+:root{--panel:rgba(255,252,240,.94);--ink:#2b2418;--accent:#c9772b;color-scheme:light dark}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--panel:rgba(32,38,30,.95);--ink:#f3ecd8;--accent:#e8a35a}}
+:root[data-theme="dark"]{--panel:rgba(32,38,30,.95);--ink:#f3ecd8;--accent:#e8a35a}
+html,body{height:100%;margin:0;background:#1b2a1f;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:12px;top:calc(10px + env(safe-area-inset-top,0px));background:var(--panel);padding:8px 12px;border-radius:12px;font-size:14px;line-height:1.5;box-shadow:0 2px 8px #0003}
+#btns{position:fixed;right:44px;top:calc(10px + env(safe-area-inset-top,0px));display:flex;gap:8px}
+button{font:inherit;border:0;border-radius:12px;background:var(--panel);color:var(--ink);padding:8px 12px;cursor:pointer;box-shadow:0 2px 8px #0003}
+button.p{background:var(--accent);color:#fff;font-weight:600;font-size:18px;padding:12px 28px}
+#meter{position:fixed;right:calc(8px + env(safe-area-inset-right,0px));top:18%;bottom:18%;width:26px;background:var(--panel);border-radius:13px;overflow:hidden;box-shadow:0 2px 8px #0003}
+#fill{position:absolute;left:0;right:0;bottom:0;height:0;background:linear-gradient(#e0503a,#e8c23a 40%,#4cae4f)}
+#fill.loud{filter:saturate(1.4) brightness(1.1)}
+#thl{position:absolute;left:0;right:0;height:3px;background:#000;opacity:.7}
+#mt{position:fixed;right:calc(4px + env(safe-area-inset-right,0px));top:calc(18% - 22px);font-size:16px}
+#ov,#panel{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#0008;padding:16px;box-sizing:border-box}
+#panel{display:none}
+.card{background:var(--panel);border-radius:16px;padding:20px;max-width:380px;width:100%;max-height:90%;overflow:auto;box-sizing:border-box}
+.card h1,.card h2{margin:0 0 8px;font-size:22px}
+.card p{margin:6px 0 14px;font-size:14px;line-height:1.45}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin:10px 0;font-size:14px}
+.row input{grid-column:1/3;width:100%;accent-color:var(--accent)}
+#msg{color:#c0392b;font-size:13px;min-height:16px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="btns"><button id="bTest" title="Pidä pohjassa: simuloi ääntä (tai Space)">🎤 Äänitesti</button><button id="bMute">🔊</button><button id="bSet">⚙</button></div>
+<div id="mt">🎤</div>
+<div id="meter"><div id="fill"></div><div id="thl"></div></div>
+
+<div id="ov"><div class="card">
+<h1>🏠 Hiljainen koti</h1>
+<p>Pysy hiljaa. Kun hiljaisuutta on kestänyt tarpeeksi kauan, kulhoon lentää suklaakeksi, ja seuraava tulee kaksinkertaisen ajan kohdalla jne. Jos meuhkaat liian kauan, kulho kaatuu ja keksit putoavat.</p>
+<p>Pelaa mieluiten kuulokkeilla, ettei taustamusiikki kuulu mikrofoniin. Säädä nopeus ja rajat asetuksista ⚙.</p>
+<div id="msg"></div>
+<button class="p" id="go">Aloita</button> <button id="skip" style="display:none">Jatka ilman mikkiä</button>
+</div></div>
+
+<div id="panel"><div class="card">
+<h2>Asetukset</h2>
+<div id="rows"></div>
+<button id="reset">Palauta oletukset</button> <button id="close" class="p" style="font-size:15px;padding:8px 18px">Valmis</button>
+</div></div>
+
+<script>
+const $=id=>document.getElementById(id), clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const cv=$('c'), ctx=cv.getContext('2d');
+let W,H;
+function resize(){const d=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',resize);resize();
+
+/* ---------- Asetukset ---------- */
+const defs={silence:60,th:.45,sens:1,dur:1,speed:1,mus:.3,sfx:.7};
+const S={...defs};
+try{Object.assign(S,JSON.parse(localStorage.getItem('hs_set')||'{}'))}catch(e){}
+let best=0;try{best=+localStorage.getItem('hs_best')||0}catch(e){}
+const fields=[
+ ['speed','Pelin nopeus (kello kulkee x-kertaa)',1,30,1,v=>v+'x'],
+ ['silence','Hiljaisuus yhtä keksiä kohti',5,180,5,v=>v+' s'],
+ ['th','Äänen raja (musta viiva mittarissa)',.1,.9,.01,v=>Math.round(v*100)+' %'],
+ ['dur','Kuinka kauan ääntelyä sallitaan',.2,3,.1,v=>(+v).toFixed(1)+' s'],
+ ['sens','Mikrofonin herkkyys',.5,3,.1,v=>(+v).toFixed(1)+'x'],
+ ['mus','Musiikin voimakkuus',0,1,.05,v=>Math.round(v*100)+' %'],
+ ['sfx','Tehosteiden voimakkuus',0,1,.05,v=>Math.round(v*100)+' %']];
+function save(){try{localStorage.setItem('hs_set',JSON.stringify(S))}catch(e){}}
+function buildRows(){
+ $('rows').innerHTML='';
+ fields.forEach(([k,l,mn,mx,st,f])=>{
+  const r=document.createElement('div');r.className='row';
+  const a=document.createElement('span');a.textContent=l;
+  const b=document.createElement('b');b.textContent=f(S[k]);
+  const i=document.createElement('input');i.type='range';i.min=mn;i.max=mx;i.step=st;i.value=S[k];
+  i.oninput=()=>{S[k]=+i.value;b.textContent=f(S[k]);save();applyVol();placeTh()};
+  r.append(a,b,i);$('rows').append(r)});
+}
+buildRows();
+function placeTh(){$('thl').style.top=((1-S.th)*100)+'%'}placeTh();
+$('bSet').onclick=()=>$('panel').style.display='flex';
+$('close').onclick=()=>$('panel').style.display='none';
+$('reset').onclick=()=>{Object.assign(S,defs);save();buildRows();applyVol();placeTh()};
+
+/* ---------- Ääni ---------- */
+let ac,mG,sG,muted=false,step=0,nextT=0;
+const mid=m=>440*2**((m-69)/12);
+function applyVol(){if(!ac)return;mG.gain.value=muted?0:S.mus*.5;sG.gain.value=muted?0:S.sfx}
+function tone(f,t,d,type,vol,dest,f2){const o=ac.createOscillator(),g=ac.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(dest);o.start(t);o.stop(t+d+.05)}
+const sfxSpawn=()=>{if(!ac)return;const t=ac.currentTime;[84,88,91,96].forEach((m,i)=>tone(mid(m),t+i*.07,.4,'sine',.25,sG))};
+const sfxLand=()=>{if(!ac)return;tone(220,ac.currentTime,.2,'sine',.6,sG,70)};
+const sfxTip=()=>{if(!ac)return;const t=ac.currentTime;tone(320,t,.7,'sawtooth',.25,sG,60);[.5,.65,.8,.95].forEach(d=>tone(140,t+d,.15,'square',.2,sG,60))};
+const prog=[48,45,41,43],pent=[0,2,4,7,9],pat=[0,2,4,2,3,1,4,2];
+function playStep(s,t){const bar=Math.floor(s/8)%4,i=s%8;
+ if(i%4===0)tone(mid(prog[bar]),t,1.1,'sine',.5,mG);
+ if(i%2===0||bar%2)tone(mid(72+pent[(pat[i]+bar)%5]),t,.5,'triangle',.28,mG)}
+function startMusic(){nextT=ac.currentTime+.1;setInterval(()=>{while(nextT<ac.currentTime+.4){playStep(step,nextT);nextT+=.28;step++}},100)}
+$('bMute').onclick=()=>{muted=!muted;$('bMute').textContent=muted?'🔇':'🔊';applyVol()};
+
+/* ---------- Mikrofoni ---------- */
+let an,buf,micOK=false,sim=false,keep={},micErr='',spLvl=0;
+async function initMic(){
+ micErr='';
+ try{
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('selain ei salli mikrofonia tässä näkymässä');
+  let st;
+  try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
+  catch(e){if(e.name==='OverconstrainedError'||e.name==='TypeError')st=await navigator.mediaDevices.getUserMedia({audio:true});else throw e}
+  ac.resume().catch(()=>{});
+  an=ac.createAnalyser();an.fftSize=2048;buf=new Float32Array(2048);
+  const src=ac.createMediaStreamSource(st),z=ac.createGain();z.gain.value=0;
+  src.connect(an);an.connect(z);z.connect(ac.destination);
+  try{const sp=ac.createScriptProcessor(1024,1,1);sp.onaudioprocess=e=>{const d=e.inputBuffer.getChannelData(0);let s=0,pk=0;for(let i=0;i<d.length;i++){const v=Math.abs(d[i]);s+=v*v;if(v>pk)pk=v}spLvl=Math.max(Math.sqrt(s/d.length),pk*.5)};src.connect(sp);sp.connect(z);keep.sp=sp}catch(e){}
+  keep={st,src,z,an};micOK=true;
+ }catch(e){micOK=false;micErr=(e&&e.name?e.name+': ':'')+((e&&e.message)||'')}
+ return micOK;
+}
+function rawLevel(){
+ if(sim)return .95;if(!micOK)return 0;
+ an.getFloatTimeDomainData(buf);let s=0,pk=0;for(let i=0;i<buf.length;i++){const v=Math.abs(buf[i]);s+=v*v;if(v>pk)pk=v}
+ const a=Math.max(Math.sqrt(s/buf.length),pk*.5,spLvl)||1e-5;
+ return clamp(((20*Math.log10(a)+70)/55)*S.sens,0,1);
+}
+const tb=$('bTest');
+['pointerdown'].forEach(e=>tb.addEventListener(e,ev=>{sim=true;ev.preventDefault()}));
+['pointerup','pointerleave','pointercancel'].forEach(e=>tb.addEventListener(e,()=>sim=false));
+addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat){sim=true;e.preventDefault()}});
+addEventListener('keyup',e=>{if(e.code==='Space')sim=false});
+
+/* ---------- Peli ---------- */
+let started=false,silentT=0,noiseT=0,lvl=0,cookies=[],flying=[],falling=[],tip=null,nid=1,added=0;
+const bowl=()=>{const bw=clamp(W*.5,170,280);return{bw,bx:W/2-bw/2*0,by:H*.66,bh:bw*.38}};
+function slotPos(i,b){const row=Math.floor(i/5),col=i%5;return{x:(col-2)*(b.bw/6.2)+(row%2?b.bw/12:0),y:-8-row*19}}
+function spawn(){
+ const b=bowl(),i=cookies.length+flying.length,p=slotPos(i,b),left=Math.random()<.5;
+ flying.push({id:nid++,t:0,dur:1.5,sx:left?-40:W+40,sy:H*.2,tx:b.bx+p.x,ty:b.by+p.y});
+ sfxSpawn();
+}
+function startTip(){
+ const b=bowl();
+ cookies.forEach((c,i)=>{const p=slotPos(i,b);falling.push({id:c.id,x:b.bx+p.x,y:b.by+p.y,vx:70+Math.random()*190,vy:-120-Math.random()*120})});
+ flying.forEach(f=>{falling.push({id:f.id,x:f.sx+(f.tx-f.sx)*f.t/f.dur,y:f.sy,vx:0,vy:0})});
+ cookies=[];flying=[];tip={t:0};sfxTip();
+}
+function fmt(s){s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+
+function update(dt){
+ const raw=rawLevel();lvl+=(raw-lvl)*(raw>lvl?.5:.08);
+ $('fill').style.height=(lvl*100)+'%';$('fill').className=lvl>S.th?'loud':'';
+ if(tip){
+  tip.t+=dt;if(tip.t>2.8){tip=null;silentT=0;noiseT=0;added=0}
+ }else{
+  if(lvl>S.th)noiseT+=dt;else{noiseT=Math.max(0,noiseT-dt*2);silentT+=dt*S.speed}
+  if(noiseT>=S.dur&&(cookies.length+flying.length)>0){startTip()}
+  else if(noiseT>=S.dur){noiseT=0;silentT=0;added=0}
+  if(added*S.silence<=0&&false){}
+  while(silentT>=(added+1)*S.silence){added++;spawn()}
+ }
+ flying.forEach(f=>f.t+=dt);
+ for(let i=flying.length-1;i>=0;i--)if(flying[i].t>=flying[i].dur){cookies.push({id:flying[i].id});flying.splice(i,1);sfxLand();if(cookies.length>best){best=cookies.length;try{localStorage.setItem('hs_best',best)}catch(e){}}}
+ falling.forEach(c=>{c.vy+=900*dt;c.x+=c.vx*dt;c.y+=c.vy*dt});
+ falling=falling.filter(c=>c.y<H+40);
+ const next=(added+1)*S.silence-silentT;
+ $('hud').innerHTML=`Hiljaisuutta <b>${fmt(silentT)}</b><br>Seuraava keksi <b>${tip?'–':fmt(next/S.speed)}</b>${S.speed>1?' <small>(oikeaa aikaa)</small>':''}<br>🍪 ${cookies.length+flying.length} · ennätys ${best}<br>🎤 ${micOK?'päällä':'ei käytössä'} ${Math.round(lvl*100)} % <small>(${ac?ac.state:'-'})</small>`;
+}
+
+function cookie(x,y,r,id){
+ ctx.fillStyle='#b9824a';ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+ ctx.strokeStyle='#8a5a2c';ctx.lineWidth=2;ctx.stroke();
+ ctx.fillStyle='#3b2214';
+ for(let k=0;k<5;k++){const a=id*1.7+k*1.26,d=r*(k%2?.55:.3);ctx.beginPath();ctx.arc(x+Math.cos(a)*d,y+Math.sin(a)*d,r*.17,0,7);ctx.fill()}
+}
+const ease=t=>t*t*(3-2*t);
+function drawRoom(time){
+ const b=bowl(),floorY=H*.8,tableY=b.by+b.bh*.94;
+ let g=ctx.createLinearGradient(0,0,0,floorY);g.addColorStop(0,'#f1dcc0');g.addColorStop(1,'#e6c9a0');ctx.fillStyle=g;ctx.fillRect(0,0,W,floorY);
+ ctx.fillStyle='#d9b88c';ctx.fillRect(0,floorY-H*.07,W,H*.07);ctx.fillStyle='#b98f60';ctx.fillRect(0,floorY-H*.07,W,4);
+ g=ctx.createLinearGradient(0,floorY,0,H);g.addColorStop(0,'#a36a3c');g.addColorStop(1,'#7a4a26');ctx.fillStyle=g;ctx.fillRect(0,floorY,W,H-floorY);
+ ctx.strokeStyle='#0003';ctx.lineWidth=1;for(let i=1;i<6;i++){const y=floorY+(H-floorY)*i/6;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke()}
+ const ww=clamp(W*.34,110,200),wh=ww*1.1,wx=W*.08,wy=H*.12;
+ g=ctx.createLinearGradient(0,wy,0,wy+wh);g.addColorStop(0,'#8fd0f5');g.addColorStop(1,'#d8f0ff');ctx.fillStyle=g;ctx.fillRect(wx,wy,ww,wh);
+ ctx.strokeStyle='#fff';ctx.lineWidth=6;ctx.strokeRect(wx,wy,ww,wh);ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(wx+ww/2,wy);ctx.lineTo(wx+ww/2,wy+wh);ctx.moveTo(wx,wy+wh/2);ctx.lineTo(wx+ww,wy+wh/2);ctx.stroke();
+ ctx.fillStyle='#c4574a';ctx.fillRect(wx-14,wy-8,16,wh+20);ctx.fillRect(wx+ww-2,wy-8,16,wh+20);
+ const fw=clamp(W*.2,64,110),fx=W*.6,fy=H*.15;
+ ctx.save();ctx.translate(fx+fw/2,fy);ctx.rotate(Math.sin(time/45)*lvl*.12);
+ ctx.fillStyle='#6b4423';ctx.fillRect(-fw/2,0,fw,fw*1.2);ctx.fillStyle='#f6efe0';ctx.fillRect(-fw/2+6,6,fw-12,fw*1.2-12);
+ ctx.fillStyle='#7fb069';ctx.beginPath();ctx.arc(0,fw*.8,fw*.25,Math.PI,0);ctx.fill();ctx.fillStyle='#e9c46a';ctx.beginPath();ctx.arc(-fw*.15,fw*.3,fw*.1,0,7);ctx.fill();
+ ctx.restore();
+ const tw=Math.min(W*.92,b.bw*2.3),tx=W/2-tw/2;
+ ctx.fillStyle='#0002';ctx.beginPath();ctx.ellipse(W/2,H*.94,tw*.5,10,0,0,7);ctx.fill();
+ ctx.fillStyle='#8a5a30';ctx.fillRect(tx+tw*.08,tableY,12,H*.93-tableY);ctx.fillRect(tx+tw*.92-12,tableY,12,H*.93-tableY);
+ ctx.fillStyle='#a8713d';ctx.fillRect(tx,tableY,tw,16);ctx.fillStyle='#c18a52';ctx.fillRect(tx,tableY,tw,5);
+}
+function draw(time){
+ const hz=H*.6;
+ drawRoom(time);
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ const b=bowl(),cx=b.bx;
+ ctx.save();ctx.translate(cx,b.by);
+ if(tip){const t=tip.t;const a=t<.6?ease(t/.6):t<2.2?1:1-ease((t-2.2)/.6);ctx.translate(b.bw/2,0);ctx.rotate(a*1.65);ctx.translate(-b.bw/2,0)}
+ ctx.translate(0,0);
+ /* kulho piirretään keskitettynä pisteeseen cx */
+ const rx=b.bw/2;
+ ctx.fillStyle='#7a3b22';ctx.beginPath();ctx.ellipse(0,0,rx,14,0,0,7);ctx.fill();
+ cookies.forEach((c,i)=>{const p=slotPos(i,b);cookie(p.x,p.y,16,c.id)});
+ ctx.fillStyle='#3d7fc4';ctx.beginPath();ctx.moveTo(-rx,0);ctx.bezierCurveTo(-rx,b.bh*1.25,rx,b.bh*1.25,rx,0);ctx.ellipse(0,0,rx,14,0,0,Math.PI,true);ctx.closePath();ctx.fill();
+ ctx.strokeStyle='#2a5c94';ctx.lineWidth=4;ctx.beginPath();ctx.ellipse(0,0,rx,14,0,0,7);ctx.stroke();
+ ctx.fillStyle='#ffffff40';ctx.beginPath();ctx.ellipse(-rx*.45,b.bh*.5,rx*.12,b.bh*.25,.5,0,7);ctx.fill();
+ ctx.restore();
+
+ flying.forEach(f=>{const k=ease(clamp(f.t/f.dur,0,1));const x=f.sx+(f.tx-f.sx)*k,y=f.sy+(f.ty-f.sy)*k-Math.sin(Math.PI*k)*H*.18;ctx.save();ctx.translate(x,y);ctx.rotate(k*12);cookie(0,0,16,f.id);ctx.restore()});
+ falling.forEach(c=>cookie(c.x,c.y,16,c.id));
+}
+let last=0;
+function loop(t){if(ac&&ac.state!=='running')ac.resume().catch(()=>{});const dt=Math.min((t-last)/1000||0,.1);last=t;if(started)update(dt);draw(t);requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+
+let audioReady=false;
+function setupAudio(){if(ac)return;ac=new (window.AudioContext||window.webkitAudioContext)();mG=ac.createGain();sG=ac.createGain();mG.connect(ac.destination);sG.connect(ac.destination);applyVol()}
+function showMic(ok){const m=$('msg');if(ok){m.style.color='#2e7d32';m.textContent='✓ Mikrofoni sallittu. Paina Aloita.';$('mt').textContent='🎤'}else{m.style.color='';m.textContent='Mikrofoni ei toimi ('+micErr+'). Salli mikrofoni selaimen kysymyksessä. Jos peli on avattu sovelluksen sisällä, julkaise se omalla HTTPS-osoitteellaan.';$('mt').textContent='🚫';$('go').textContent='Yritä mikrofonia uudelleen';$('skip').style.display='inline-block'}}
+addEventListener('load',async()=>{try{setupAudio()}catch(e){}$('msg').style.color='inherit';$('msg').textContent='Pyydetään mikrofonin lupaa…';showMic(await initMic())});
+$('go').onclick=async()=>{
+ $('go').disabled=true;$('msg').textContent='';
+ if(!audioReady){
+  setupAudio();
+  applyVol();
+  try{await ac.resume()}catch(e){}
+  startMusic();audioReady=true;
+ }
+ const ok=micOK||await initMic();
+ $('go').disabled=false;
+ if(!ok){
+  $('mt').textContent='🚫';$('msg').style.color='';
+  $('msg').textContent='Mikrofoni ei toimi ('+micErr+'). Salli mikrofoni. Jos peli on avattu sovelluksen sisällä, avaa sama linkki suoraan Safarissa tai Chromessa.';
+  $('go').textContent='Yritä mikrofonia uudelleen';$('skip').style.display='inline-block';
+  return;
+ }
+ $('mt').textContent='🎤';started=true;$('ov').style.display='none';
+};
+$('skip').onclick=()=>{started=true;$('ov').style.display='none'};
+</script>
+</body>
+</html>
